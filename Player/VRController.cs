@@ -9,7 +9,7 @@ using Unity.Netcode;
 using LCVR.Input;
 using LCVR.Assets;
 using System.Linq;
-using System.ComponentModel;
+using LCVR.UI;
 
 namespace LCVR.Player
 {
@@ -55,19 +55,19 @@ namespace LCVR.Player
 
         private void Awake()
         {
-            grabAction = Actions.VRInputActions.FindAction("Controls/Grab");
-            grabAction.performed += OnGrabPerformed;
+            grabAction = Actions.FindAction("Controls/Interact");
+            grabAction.performed += OnInteractPerformed;
         }
 
         private void OnDestroy()
         {
-            grabAction.performed -= OnGrabPerformed;
+            grabAction.performed -= OnInteractPerformed;
         }
 
         public void Initialize(VRPlayer player)
         {
             this.player = player;
-            this.playerController = player.gameObject.GetComponent<PlayerControllerB>();
+            playerController = player.gameObject.GetComponent<PlayerControllerB>();
 
             var interactOriginObject = new GameObject("Raycast Origin");
 
@@ -103,8 +103,11 @@ namespace LCVR.Player
             debugLineRenderer.enabled = false;
         }
 
-        private void OnGrabPerformed(InputAction.CallbackContext context)
+        private void OnInteractPerformed(InputAction.CallbackContext context)
         {
+            if (ShipBuildModeManager.Instance.InBuildMode)
+                return;
+
             try
             {
                 // Ignore server player controller
@@ -114,14 +117,10 @@ namespace LCVR.Player
                 if (playerController.isPlayerDead)
                 {
                     if (StartOfRound.Instance.overrideSpectateCamera)
-                    {
                         return;
-                    }
 
                     if (playerController.spectatedPlayerScript != null && !playerController.spectatedPlayerScript.isPlayerDead)
-                    {
                         InvokeAction("SpectateNextPlayer");
-                    }
 
                     return;
                 }
@@ -164,7 +163,7 @@ namespace LCVR.Player
 
         private void ClickHoldInteraction()
         {
-            bool pressed = grabAction.IsPressed();
+            bool pressed = grabAction.IsPressed() && !ShipBuildModeManager.Instance.InBuildMode;
             playerController.isHoldingInteract = pressed;
 
             if (!pressed)
@@ -227,7 +226,14 @@ namespace LCVR.Player
                     hitInteractable = true;
 
                     // Place interaction hud on object
-                    player.hud.UpdateInteractCanvasPosition(hit.transform.position);
+                    var position = hit.transform.position;
+                    var offsetComponent = hit.transform.gameObject.GetComponent<InteractCanvasPositionOffset>();
+                    if (offsetComponent != null)
+                    {
+                        position = hit.transform.TransformPoint(offsetComponent.offset);
+                    }
+                    
+                    player.hud.UpdateInteractCanvasPosition(position);
 
                     if (hit.collider.gameObject.CompareTag("InteractTrigger"))
                     {
